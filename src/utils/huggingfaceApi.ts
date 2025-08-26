@@ -2,7 +2,7 @@ import axios from 'axios';
 import { HuggingFaceModel, SearchFilters, ApiResponse } from '../types/models';
 
 // Point to the Node.js backend endpoint
-const HF_API_BASE = 'http://localhost:5000/api/huggingface-models'; // For local development
+const HF_API_BASE = '/api/huggingface-models'; // For Vercel deployment
 
 class HuggingFaceAPI {
   private cache = new Map<string, { data: HuggingFaceModel[]; timestamp: number; }>(); // Simplified cache entry
