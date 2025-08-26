@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { huggingFaceAPI } from './utils/huggingfaceApi';
-import { HuggingFaceModel, SearchFilters } from './types/models';
+import { HuggingFaceModel, SearchFilters, Message } from './types/models';
 import { HomePage } from './components/HomePage';
 import { ResultsPage } from './components/ResultsPage';
 import { Loader2, RefreshCw, Focus } from 'lucide-react';
@@ -11,31 +11,53 @@ function App() {
   const [results, setResults] = useState<HuggingFaceModel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilters, setSearchFilters] = useState<SearchFilters | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSearch = async (query: string, filters: SearchFilters) => {
+  const handleSendMessage = async (query: string, filters?: SearchFilters) => {
     setLoading(true);
     setError(null);
-    try {
-      const response = await huggingFaceAPI.searchModels(query, filters);
-      if (response.error) {
-        setError(response.error);
+
+    const isFollowUp = view === 'results' && messages.length > 0;
+
+    if (!isFollowUp) {
+      // Initial search
+      try {
+        const response = await huggingFaceAPI.searchModels(query, filters || {});
+        if (response.error) {
+          setError(response.error);
+          setResults([]);
+        } else if (response.models.length === 0) {
+          setError(`No models found for "${query}". Try broadening your search.`);
+          setResults([]);
+        } else {
+          setResults(response.models);
+          setSearchQuery(query);
+          setSearchFilters(filters || null);
+          setView('results');
+        }
+      } catch (e) {
+        setError('An unexpected error occurred. Please try again.');
         setResults([]);
-      } else if (response.models.length === 0) {
-        setError(`No models found for "${query}". Try broadening your search.`);
-        setResults([]);
-      } else {
-        setResults(response.models);
-        setSearchQuery(query);
-        setSearchFilters(filters);
-        setView('results');
       }
-    } catch (e) {
-      setError('An unexpected error occurred. Please try again.');
-      setResults([]);
-    } finally {
-      setLoading(false);
+    } else {
+      // Follow-up question
+      const newMessages: Message[] = [...messages, { role: 'user', content: query }];
+      setMessages(newMessages);
+
+      try {
+        const response = await openRouterAPI.generateModelDescription(
+          results,
+          query,
+          newMessages
+        );
+        setMessages([...newMessages, { role: 'assistant', content: response }]);
+      } catch (e) {
+        setError('An unexpected error occurred. Please try again.');
+      }
     }
+
+    setLoading(false);
   };
 
   const handleBackToHome = () => {
@@ -74,12 +96,15 @@ function App() {
             </div>
           </div>
         ) : view === 'home' ? (
-          <HomePage onSearch={handleSearch} initialError={error} />
+          <HomePage onSearch={handleSendMessage} initialError={error} />
         ) : (
           <ResultsPage
             results={results}
             searchQuery={searchQuery}
             searchFilters={searchFilters}
+            messages={messages}
+            onSendMessage={handleSendMessage}
+            loading={loading}
           />
         )}
       </main>
